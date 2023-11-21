@@ -37,6 +37,26 @@ spec:
 apiVersion: tekton.dev/v1beta1
 kind: Task
 metadata:
+  name: flake8
+spec:
+  description: Run linting with flake8
+  workspaces:
+    - name: source
+  steps:
+    - name: lint
+      image: python:3.9-slim
+      workingDir: "$(workspaces.source.path)"
+      script: |
+        #!/bin/bash
+        set -e
+        python3 -m pip install --upgrade pip wheel flake8
+        flake8 service --count --select=E9,F63,F7,F82 --show-source --statistics
+        flake8 service --count --max-complexity=10 --max-line-length=127 --statistics
+
+---
+apiVersion: tekton.dev/v1beta1
+kind: Task
+metadata:
   name: nose
 spec:
   workspaces:
@@ -53,6 +73,54 @@ spec:
       script: |
         #!/bin/bash
         set -e
-        python -m pip install --upgrade pip wheel
-        pip install -r requirements.txt
+        python3 -m pip install --upgrade pip wheel
+        pip3 install -r requirements.txt
         nosetests "$(params.args)"
+
+--- 
+apiVersion: tekton.dev/v1beta1
+kind: Task
+metadata:
+  name: buildah
+spec:
+  description: Build a container image using Buildah
+  params:
+    - name: image-name
+      description: Name for the resulting image
+      type: string
+    - name: context-dir
+      description: Directory containing the build context (Dockerfile and application code)
+      type: string
+  steps:
+    - name: build-image
+      image: quay.io/buildah/stable:latest
+      workingDir: $(params.context-dir)
+      script: |
+        #!/bin/bash
+        set -e
+        buildah bud -t $(params.image-name) .
+
+
+---
+apiVersion: tekton.dev/v1beta1
+kind: Task
+metadata:
+  name: deploy
+spec:
+  params:
+    - name: app-name
+      description: Name of the application
+      type: string
+    - name: build-image
+      description: Image to deploy
+      type: string
+  steps:
+    - name: deploy
+      image: quay.io/openshift/origin-cli:latest
+      command:
+        - /bin/bash
+      args:
+        - -c
+        - |
+          oc create deployment $(params.app-name) --image=$(params.build-image) --dry-run=client -o yaml | oc apply -f -
+
