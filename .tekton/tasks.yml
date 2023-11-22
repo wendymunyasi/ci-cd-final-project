@@ -89,6 +89,7 @@ spec:
       description: Name for the resulting image
       type: string
     - name: context-dir
+      value: ci-cd-final-project
       description: Directory containing the build context (Dockerfile and application code)
       type: string
   steps:
